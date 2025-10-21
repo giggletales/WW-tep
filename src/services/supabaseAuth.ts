@@ -1,5 +1,4 @@
 import { supabase } from '../lib/supabase';
-import bcrypt from 'bcryptjs';
 
 export interface SignUpData {
   firstName: string;
@@ -17,30 +16,26 @@ export interface SignInData {
 export const authService = {
   async signUp(data: SignUpData) {
     try {
-      const passwordHash = await bcrypt.hash(data.password, 10);
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: data.email,
+        password: data.password,
+        options: {
+          data: {
+            first_name: data.firstName,
+            last_name: data.lastName,
+          }
+        }
+      });
 
-      const { data: user, error: userError } = await supabase
-        .from('users')
-        .insert({
-          email: data.email,
-          password_hash: passwordHash,
-          first_name: data.firstName,
-          last_name: data.lastName,
-          role: 'user',
-          is_active: true,
-          email_verified: false
-        })
-        .select()
-        .single();
-
-      if (userError) throw userError;
+      if (authError) throw authError;
+      if (!authData.user) throw new Error('User creation failed');
 
       const uniqueId = Math.floor(100000 + Math.random() * 900000).toString();
 
       const { error: profileError } = await supabase
         .from('user_profiles')
         .insert({
-          user_id: user.id,
+          user_id: authData.user.id,
           unique_id: uniqueId,
           account_type: 'personal',
           risk_tolerance: 'moderate',
@@ -69,10 +64,10 @@ export const authService = {
       return {
         success: true,
         user: {
-          id: user.id,
-          email: user.email,
-          first_name: user.first_name,
-          last_name: user.last_name,
+          id: authData.user.id,
+          email: authData.user.email!,
+          first_name: data.firstName,
+          last_name: data.lastName,
           unique_id: uniqueId,
           plan_type: data.plan_type
         }
@@ -88,56 +83,40 @@ export const authService = {
 
   async signIn(data: SignInData) {
     try {
-      const { data: user, error: userError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', data.email)
-        .maybeSingle();
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: data.email,
+        password: data.password,
+      });
 
-      if (userError) throw userError;
-      if (!user) {
+      if (authError) throw authError;
+      if (!authData.user) {
         return {
           success: false,
           error: 'Invalid email or password'
-        };
-      }
-
-      const passwordMatch = await bcrypt.compare(data.password, user.password_hash);
-      if (!passwordMatch) {
-        return {
-          success: false,
-          error: 'Invalid email or password'
-        };
-      }
-
-      if (!user.is_active) {
-        return {
-          success: false,
-          error: 'Account is deactivated'
         };
       }
 
       const { data: profile } = await supabase
         .from('user_profiles')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', authData.user.id)
         .maybeSingle();
 
       const { data: subscription } = await supabase
         .from('user_subscriptions')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', authData.user.id)
         .eq('status', 'active')
         .maybeSingle();
 
       return {
         success: true,
         user: {
-          id: user.id,
-          email: user.email,
-          first_name: user.first_name,
-          last_name: user.last_name,
-          role: user.role,
+          id: authData.user.id,
+          email: authData.user.email!,
+          first_name: authData.user.user_metadata?.first_name || '',
+          last_name: authData.user.user_metadata?.last_name || '',
+          role: 'user',
           profile,
           subscription
         }
@@ -153,11 +132,7 @@ export const authService = {
 
   async getUserProfile(userId: string) {
     try {
-      const { data: user, error: userError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
 
       if (userError) throw userError;
 
