@@ -1,7 +1,6 @@
 import { useState, useEffect, Suspense, Component, ReactNode } from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import LandingPage from './components/LandingPage';
-import Enhanced3DLandingPage from './components/Enhanced3DLandingPage';
 import SignUp from './components/SignUp';
 import SignIn from './components/SignIn';
 import MembershipPlans from './components/MembershipPlans';
@@ -134,8 +133,7 @@ const AppContent = () => {
     <div className="min-h-screen" style={{ perspective: '1000px', transformStyle: 'preserve-3d' }}>
       <Suspense fallback={<div>Loading...</div>}>
         <Routes>
-          <Route path="/" element={<Enhanced3DLandingPage />} />
-          <Route path="/3d" element={<Enhanced3DLandingPage />} />
+          <Route path="/" element={<LandingPage />} />
           <Route path="/classic" element={<LandingPage />} />
           <Route path="/signup" element={<SignUp />} />
         <Route path="/signin" element={<SignIn />} />
