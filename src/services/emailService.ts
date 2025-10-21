@@ -1,4 +1,7 @@
 import { EmailTemplate, EmailEvent, EmailData } from '../types/email';
+import { supabase } from '../lib/supabase';
+
+const FROM_EMAIL = 'support@traderedgepro.com';
 
 // Mailchimp configuration
 const MAILCHIMP_API_KEY = 'de5ba33102d063d239d74e2f63154a64-us1';
@@ -171,11 +174,23 @@ class EmailService {
     return Math.abs(hash).toString(16);
   }
 
-  // Send welcome email
-  async sendWelcomeEmail(email: string, name: string): Promise<boolean> {
+  // Send welcome email with database logging
+  async sendWelcomeEmail(email: string, name: string, userId?: string): Promise<boolean> {
     await this.addContact(email, name, '', ['new-user']);
     const template = this.getWelcomeTemplate(name);
-    return this.sendCampaign('Welcome to TraderEdgePro! 🚀', template, email, name);
+    const success = await this.sendCampaign('Welcome to TraderEdgePro! 🚀', template, email, name);
+
+    await supabase.from('email_logs').insert({
+      user_id: userId || null,
+      email_to: email,
+      email_type: 'welcome',
+      subject: 'Welcome to TraderEdgePro! 🚀',
+      body: template,
+      status: success ? 'sent' : 'failed',
+      metadata: { name }
+    });
+
+    return success;
   }
 
   // Send account creation confirmation
@@ -185,17 +200,31 @@ class EmailService {
     return this.sendCampaign('Account Created Successfully! 🎉', template, email, name);
   }
 
-  // Send payment success email
+  // Send payment success email with database logging
   async sendPaymentSuccessEmail(
-    email: string, 
-    name: string, 
-    amount: number, 
+    email: string,
+    name: string,
+    amount: number,
     membershipTier: string,
-    transactionId: string
+    transactionId: string,
+    userId?: string,
+    features?: string[]
   ): Promise<boolean> {
     await this.addContact(email, name, '', ['payment-success', membershipTier]);
     const template = this.getPaymentSuccessTemplate(name, amount, membershipTier, transactionId);
-    return this.sendCampaign('Payment Successful - Welcome to Premium! 💎', template, email, name);
+    const success = await this.sendCampaign('Payment Successful - Welcome to Premium! 💎', template, email, name);
+
+    await supabase.from('email_logs').insert({
+      user_id: userId || null,
+      email_to: email,
+      email_type: 'payment_confirmation',
+      subject: 'Payment Successful - Welcome to Premium! 💎',
+      body: template,
+      status: success ? 'sent' : 'failed',
+      metadata: { name, amount, membershipTier, transactionId, features }
+    });
+
+    return success;
   }
 
   // Send password reset email

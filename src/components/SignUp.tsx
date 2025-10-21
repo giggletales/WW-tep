@@ -5,6 +5,8 @@ import { useUser } from '../contexts/UserContext';
 import Header from './Header';
 import TemporaryAccountNotice from './TemporaryAccountNotice';
 import api from '../api';
+import { authService } from '../services/supabaseAuth';
+import emailService from '../services/emailService';
 
 const SignUp = () => {
   const navigate = useNavigate();
@@ -72,8 +74,7 @@ const SignUp = () => {
     setIsLoading(true);
 
     try {
-      // Try to register with backend API
-      const response = await api.post('/auth/register', {
+      const result = await authService.signUp({
         firstName: formData.firstName,
         lastName: formData.lastName,
         email: formData.email,
@@ -81,14 +82,23 @@ const SignUp = () => {
         plan_type: selectedPlan.name.toLowerCase(),
       });
 
-      const { access_token } = response.data;
-      localStorage.setItem('access_token', access_token);
+      if (!result.success) {
+        setError(result.error || 'Registration failed');
+        setIsLoading(false);
+        return;
+      }
 
-      const uniqueId = Math.floor(100000 + Math.random() * 900000).toString();
+      await emailService.sendWelcomeEmail(
+        formData.email,
+        `${formData.firstName} ${formData.lastName}`,
+        result.user.id
+      );
+
+      const uniqueId = result.user.unique_id;
 
       const userData = {
         uniqueId,
-        id: `user_${Date.now()}`,
+        id: result.user.id,
         name: `${formData.firstName} ${formData.lastName}`,
         email: formData.email,
         membershipTier: selectedPlan.name.toLowerCase(),
@@ -97,17 +107,16 @@ const SignUp = () => {
         isAuthenticated: true,
         setupComplete: false,
         selectedPlan,
-        token: access_token,
+        token: result.user.id,
       };
 
-      login(userData, access_token);
+      login(userData, result.user.id);
       localStorage.setItem('user_data', JSON.stringify(userData));
       localStorage.setItem('current_user', JSON.stringify(userData));
 
-      // Successfully registered, redirect to payment
       navigate('/payment-flow', { state: { selectedPlan } });
     } catch (err: any) {
-      console.error('Backend signup failed, using fallback:', err);
+      console.error('Signup error:', err);
       
       // Create temporary account for immediate access to payment flow
       const tempToken = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
